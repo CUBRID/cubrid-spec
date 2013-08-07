@@ -8,19 +8,16 @@
 Summary:       An open source database highly optimized for Web applications
 Name:          cubrid
 Version:       %{cubrid_version}.%{build_version}
-Release:       1%{?dist}
+Release:       2%{?dist}
 License:       GPLv2+ and BSD
 URL:           http://www.cubrid.org
-Source0:       http://sourceforge.net/projects/cubrid/files/CUBRID-9.1.0/Linux/Fedora-RPM/%{name}-%{cubrid_version}.%{build_version}.1.tar.gz
+Source0:       http://sourceforge.net/projects/cubrid/files/CUBRID-9.1.0/Linux/Fedora-RPM/%{name}-%{version}.2.tar.gz
 Requires:      expect
 Requires:      ncurses
 Requires:      csh
 Requires:      gc
 Requires:      lzo
 Requires:      pcre
-Requires(post): systemd
-Requires(preun): systemd
-Requires(postun): systemd
 BuildRequires: chrpath
 BuildRequires: elfutils-libelf-devel
 BuildRequires: ncurses-devel
@@ -39,21 +36,18 @@ BuildRequires: libaio-devel
 BuildRequires: systemd-units
 
 %description
-CUBRID is a comprehensive GPL/BSD open source relational database management
-system highly optimized for Web Applications. CUBRID is being developed in 
-C/C++. It includes HA, online backup, and other features, such as JDBC, PHP,
-ODBC/.NET, Ruby & Python APIs.
+CUBRID is a comprehensive GPL/BSD open source relational database management system highly optimized for Web Applications. CUBRID is being developed in C and provide buit-in support for high-availability, database sharding, online backup, and other features. JDBC, PHP/PDO, ODBC/OLEDB/.NET, Ruby, Python, Perl, C, and Node.js drivers are available to communicate with CUBRID Server.
 
-%package devel 
-Summary:    Development files for CUBRID database
-Requires:   %{name}%{?_isa} = %{cubrid_version}.%{build_version}
+%package devel
+Summary:    Development files for CUBRID database.
+Requires:   %{name}%{?_isa} = %{version}.%{release}
 
 %description devel
 %{summary}
 
-%package demodb 
-Summary:    Sample CUBRID database named demodb
-Requires:   %{name}%{?_isa} = %{cubrid_version}.%{build_version}
+%package demodb
+Summary:    Sample CUBRID database named demodb.
+Requires:   %{name}%{?_isa} = %{version}.%{release}
 
 %description demodb
 %{summary}
@@ -63,7 +57,7 @@ Requires:   %{name}%{?_isa} = %{cubrid_version}.%{build_version}
 
 %build
 %ifarch x86_64
-    CFLAGS=" -m64 " 
+    CFLAGS=" -m64 "
     CUBRID_COMMON_CONFIGURE="${CUBRID_COMMON_CONFIGURE} --enable-64bit"
 %endif
 
@@ -74,6 +68,15 @@ export LDFLAGS="$LDFLAGS -Wl,--build-id -llzo2"
 export JAVA_HOME=$(readlink -f /usr/bin/javac | sed "s:/bin/javac::")
 
 ./autogen.sh
+# We cannot use (%)configure instead of (./)configure because
+# (%)configure sets everything including `libdir`, `bindir`, etc.
+# If `libdir` is set, CUBRID installation will fail because at this
+# moment CUBRID does not support this option. In fact, there are
+# other options which are also not supported. CUBRID requires
+# most of its libraries to exist under the same directory where
+# it is installed. Thus, because we insist on using `./configure`,
+# `rpmlint` generates the following warning mesage:
+# `W: configure-without-libdir-spec`. This is expected.
 ./configure ${CUBRID_COMMON_CONFIGURE} --target=$(uname -m) --disable-static --disable-rpath --prefix=%{cubridsharedata}
 
 %install
@@ -131,7 +134,7 @@ install -d %{buildroot}%{_includedir}
 find %{buildroot} -size 0 -delete
 
 if [ ! -L %{buildroot}%{cubridsharedata}/log ]; then
-    ln -s %{cubridvardir}/log %{buildroot}%{cubridsharedata}/log 
+    ln -s %{cubridvardir}/log %{buildroot}%{cubridsharedata}/log
     ln -s %{cubridvardir}/tmp %{buildroot}%{cubridsharedata}/tmp
     ln -s %{cubridvardir}/var %{buildroot}%{cubridsharedata}/var
     ln -s %{cubridvardir}/databases %{buildroot}%{cubridsharedata}/databases
@@ -231,7 +234,7 @@ if [ $1 -eq 1 ] ; then
     getent passwd %{cubrid_user} >/dev/null || useradd -r -g %{cubrid_user} -d %{_prefix}/share/cubrid -s /sbin/nologin -c "runs the cubrid database service" %{cubrid_user}
 fi
 
-%post 
+%post
 %systemd_post cubrid.service
 /sbin/ldconfig
 
@@ -242,7 +245,7 @@ if [ $1 -eq 1 ] ; then
     mkdir -p %{cubridvardir}/tmp
     mkdir -p %{cubridvardir}/databases
     touch %{cubridvardir}/databases/databases.txt
-    chown %{cubrid_user}:%{cubrid_user} -R %{cubridvardir} 
+    chown %{cubrid_user}:%{cubrid_user} -R %{cubridvardir}
     systemctl enable cubrid.service > /dev/null 2>&1
 fi
 
@@ -265,11 +268,11 @@ fi
 %systemd_postun cubrid.service
 /sbin/ldconfig
 
-%post demodb 
+%post demodb
 %{_prefix}/share/cubrid/demo/make_cubrid_demo.sh > /dev/null 2>&1
 su -l -s $SHELL %{cubrid_user} -c ". /etc/profile.d/cubrid.sh; cubrid server start demodb > /dev/null 2>&1"
 
-%postun demodb 
+%postun demodb
 su -l -s $SHELL %{cubrid_user} -c ". /etc/profile.d/cubrid.sh; cubrid server stop demodb > /dev/null 2>&1; cubrid deletedb demodb > /dev/null 2>&1"
 
 %clean
@@ -301,7 +304,14 @@ su -l -s $SHELL %{cubrid_user} -c ". /etc/profile.d/cubrid.sh; cubrid server sto
 %{_includedir}/DBGWWorkFwd.h
 
 %files demodb
-%defattr(-,cubrid,cubrid,-)
+# `demodb` demo database is not a sample database publicly
+# available on the Internet. It is just a demo database
+# distributed together with CUBRID binaries. `demodb`
+# database can be installed only by cubrid user, and
+# since the related files are stored in
+# `/usr/share/cubrid/demo`, it is logical that they are
+# owned by the same cubrid user.
+%defattr(-,cubrid_user,cubrid_user,-)
 %{cubridsharedata}/demo
 
 %files
@@ -416,7 +426,7 @@ su -l -s $SHELL %{cubrid_user} -c ". /etc/profile.d/cubrid.sh; cubrid server sto
 %{cubridsharedata}/compat
 %{cubridsharedata}/locales
 
-%defattr(-,cubrid,cubrid,-)
+%defattr(-,cubrid_user,cubrid_user,-)
 %config(noreplace) %{_sysconfdir}/cubrid
 %{cubridsharedata}/conf
 %{cubridsharedata}/databases
@@ -425,6 +435,16 @@ su -l -s $SHELL %{cubrid_user} -c ". /etc/profile.d/cubrid.sh; cubrid server sto
 %{cubridsharedata}/var
 
 %changelog
+* Wed Aug 07 2013 CUBRID Developers<contact@cubrid.org> - 9.1.0.0212-2
+- Removed `systemd` as suggested by at
+  https://bugzilla.redhat.com/show_bug.cgi?id=658754#c54
+- Added `release` to version `Require` as suggested at
+  https://bugzilla.redhat.com/show_bug.cgi?id=658754#c55.
+- Added code comments.
+- For consistency, replaced `cubrid` user with `cubrid_user`
+  as suggested at
+  https://bugzilla.redhat.com/show_bug.cgi?id=658754#c54.
+
 * Mon Apr 01 2013 CUBRID Developers<contact@cubrid.org> - 9.1.0.0212-1
 - Upgraded to 9.1.0.0212
 - Changed the way the files are located
