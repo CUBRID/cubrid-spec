@@ -1,4 +1,3 @@
-cubrid-spec
-===========
+# CUBRID spec files for Linux
 
-CUBRID spec file to build on Linux systems.
+This repository includes CUBRID spec files to build CUBRID, CUBRID PHP and Python drivers on Linux systems.
