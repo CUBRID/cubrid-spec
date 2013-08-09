@@ -3,15 +3,15 @@
 %global cubrid_user    cubrid
 %global cubridvardir    %{_localstatedir}/%{name}
 %global cubridsharedata %{_datarootdir}/%{name}
-%global debug_package %{nil}
 
 Summary:       An open source database highly optimized for Web applications
 Name:          cubrid
 Version:       %{cubrid_version}.%{build_version}
-Release:       2%{?dist}
+Release:       3%{?dist}
 License:       GPLv2+ and BSD
 URL:           http://www.cubrid.org
-Source0:       http://sourceforge.net/projects/cubrid/files/CUBRID-9.1.0/Linux/Fedora-RPM/%{name}-%{version}.2.tar.gz
+# Guidelines on `Source0`: https://fedoraproject.org/wiki/Packaging_talk:SourceURL
+Source0:       http://downloads.sourceforge.net/%{name}/CUBRID-%{cubrid_version}/Linux/Fedora-RPM/%{name}-%{version}.3.tar.gz
 Requires:      expect
 Requires:      ncurses
 Requires:      csh
@@ -34,19 +34,28 @@ BuildRequires: libedit-devel
 BuildRequires: pcre-devel
 BuildRequires: libaio-devel
 BuildRequires: systemd-units
+# If a Fedora package does not successfully compile, build or work on an architecture, then those architectures should be listed in the spec in ExcludeArch. Each architecture listed in ExcludeArch needs to have a bug filed in bugzilla, describing the reason that the package does not compile/build/work on that architecture. The bug number should then be placed in a comment, next to the corresponding ExcludeArch line. New packages will not have bugzilla entries during the review process, so they should put this description in the comment until the package is approved, then file the bugzilla entry, and replace the long explanation with the bug number. The bug should be marked as blocking one (or more) of the following bugs to simplify tracking such issues:
+ExcludeArch: armv7hl
 
 %description
-CUBRID is a comprehensive GPL/BSD open source relational database management system highly optimized for Web Applications. CUBRID is being developed in C and provide buit-in support for high-availability, database sharding, online backup, and other features. JDBC, PHP/PDO, ODBC/OLEDB/.NET, Ruby, Python, Perl, C, and Node.js drivers are available to communicate with CUBRID Server.
+CUBRID is a comprehensive GPL/BSD open source relational database management
+system highly optimized for Web Applications. CUBRID is being developed in C
+and provide built-in support for high-availability, Database Sharding,
+online backup, and other features. JDBC, PHP/PDO, ODBC/OLEDB/.NET, Ruby,
+Python, Perl, C, and Node JavaScript drivers are available to communicate
+with CUBRID Server.
 
 %package devel
-Summary:    Development files for CUBRID database.
+# Summary field should not end with a dot.
+# Refer to http://fedoraproject.org/wiki/Common_Rpmlint_issues#summary-ended-with-dot.
+Summary:    Development files for CUBRID database
 Requires:   %{name}%{?_isa} = %{version}.%{release}
 
 %description devel
 %{summary}
 
 %package demodb
-Summary:    Sample CUBRID database named demodb.
+Summary:    Sample CUBRID database named demodb
 Requires:   %{name}%{?_isa} = %{version}.%{release}
 
 %description demodb
@@ -68,14 +77,15 @@ export LDFLAGS="$LDFLAGS -Wl,--build-id -llzo2"
 export JAVA_HOME=$(readlink -f /usr/bin/javac | sed "s:/bin/javac::")
 
 ./autogen.sh
-# We cannot use (%)configure instead of (./)configure because
-# (%)configure sets everything including `libdir`, `bindir`, etc.
+# We cannot use (%)configure instead of (./)configure
+# because (%)configure sets everything including `libdir`,
+# `bindir`, etc.
 # If `libdir` is set, CUBRID installation will fail because at this
 # moment CUBRID does not support this option. In fact, there are
 # other options which are also not supported. CUBRID requires
 # most of its libraries to exist under the same directory where
 # it is installed. Thus, because we insist on using `./configure`,
-# `rpmlint` generates the following warning mesage:
+# `rpmlint` on SRPM generates the following warning mesage:
 # `W: configure-without-libdir-spec`. This is expected.
 ./configure ${CUBRID_COMMON_CONFIGURE} --target=$(uname -m) --disable-static --disable-rpath --prefix=%{cubridsharedata}
 
@@ -133,6 +143,10 @@ install -d %{buildroot}%{_includedir}
 
 find %{buildroot} -size 0 -delete
 
+# The following list of symlinking commands generate rpmlint warning which
+# say something like: "W: dangling-symlink /usr/share/cubrid/log /var/cubrid/log".
+# This is expected, because originally these target directories do not exist
+# within the RPM, but they will when CUBRID is installed.
 if [ ! -L %{buildroot}%{cubridsharedata}/log ]; then
     ln -s %{cubridvardir}/log %{buildroot}%{cubridsharedata}/log
     ln -s %{cubridvardir}/tmp %{buildroot}%{cubridsharedata}/tmp
@@ -245,11 +259,17 @@ if [ $1 -eq 1 ] ; then
     mkdir -p %{cubridvardir}/tmp
     mkdir -p %{cubridvardir}/databases
     touch %{cubridvardir}/databases/databases.txt
+    # All CUBRID files must be owned by cubrid user.
+    # Because of such requirement rpmlint generates the following warning:
+    # "W: dangerous-command-in-(%)post chown". It is expected.
     chown %{cubrid_user}:%{cubrid_user} -R %{cubridvardir}
     systemctl enable cubrid.service > /dev/null 2>&1
 fi
 
-#cubrid master service cannot start if folder is not owned by user cubrid
+# cubrid master service cannot start if folder is not owned by user cubrid.
+# Having chown by user, makes rpmlint generate the following type of warnings:
+# "non-standard-gid /usr/share/cubrid/log cubrid_user".
+# They are expected.
 chown %{cubrid_user}:%{cubrid_user} %{cubridsharedata}
 
 %preun
@@ -278,6 +298,15 @@ su -l -s $SHELL %{cubrid_user} -c ". /etc/profile.d/cubrid.sh; cubrid server sto
 %clean
 
 %files devel
+# Even though most development files have been moved to "devel"
+# package, some libs must still be in the main package because
+# CUBRID uses them, otherwise, CUBRID will not work. We moved
+# all libs to devel package which were possible to move.
+# Because of this rpmlint generates the following type of warnings:
+# "W: devel-file-in-non-devel-package /usr/lib64/libcmdep.so"
+# In the future version when we separate CUBRID Manager Server from
+# the main CUBRID Server, some of these warnings will disappear
+# because these CMS related libs will not exist in the main package.
 %{_includedir}/cas_cci.h
 %{_includedir}/cas_error.h
 %{_includedir}/cm_dep.h
@@ -435,6 +464,18 @@ su -l -s $SHELL %{cubrid_user} -c ". /etc/profile.d/cubrid.sh; cubrid server sto
 %{cubridsharedata}/var
 
 %changelog
+* Fri Aug 09 2013 CUBRID Developers<contact@cubrid.org> - 9.1.0.0212-3
+- Enabled debuginfo as suggested at
+  https://bugzilla.redhat.com/show_bug.cgi?id=658754#c57. Had to
+  modify CUBRID source code to make sure nginx httpd is built
+  together with CUBRID Manager Server, not prebuilt.
+- CUBRID is not supported on ARM architecture, so excluded it from builds.
+- One more warning is "W: no-manual-page-for-binary". CUBRID does not
+  have man pages, yet.
+- One last warning message is
+  "shared-lib-calls-exit /usr/lib64/libcubridesql.so.9.1.0 exit@GLIBC_2.2.5".
+  We know about this and will make changes in the coming versions.
+
 * Wed Aug 07 2013 CUBRID Developers<contact@cubrid.org> - 9.1.0.0212-2
 - Removed `systemd` as suggested by at
   https://bugzilla.redhat.com/show_bug.cgi?id=658754#c54
